@@ -120,11 +120,13 @@
 // main();
 
 
-
 const fs = require('fs');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { URL } = require('url');
+
+// A flag to track if the crawler has already run
+let hasRun = false;
 
 // Function to extract product links
 function extractProductLinks(htmlContent, baseUrl) {
@@ -223,6 +225,11 @@ async function crawlDomain(domain, maxDepth = 2, concurrency = 5) {
 
 // Main function
 async function main() {
+    if (hasRun) {
+        console.log('Crawl has already been completed. Exiting...');
+        process.exit(0);  // Exit gracefully if already run
+    }
+
     const domains = fs.readFileSync('domains.txt', 'utf-8').split('\n').map(domain => domain.trim());
     const results = {};
 
@@ -238,6 +245,12 @@ async function main() {
 
     fs.writeFileSync('output.json', JSON.stringify(results, null, 2));
     console.log('Crawl complete. Results saved to output.json.');
+
+    // Set the flag to true to prevent re-running
+    hasRun = true;
+
+    // Gracefully exit after crawling
+    process.exit(0);
 }
 
 main();
