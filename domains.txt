@@ -1,1 +1,10 @@
 https://webscraper.io/test-sites/e-commerce/allinone
+https://webscraper.io/test-sites/e-commerce/ajax
+https://webscraper.io/test-sites/tables
+https://webscraper.io/test-sites/e-commerce/scroll
+https://webscraper.io/test-sites/e-commerce/more
+https://webscraper.io/test-sites/e-commerce/static
+https://webscraper.io/test-sites/e-commerce/static/phones
+https://webscraper.io/test-sites/e-commerce/static/phones/touch
+https://webscraper.io/test-sites/e-commerce/static/computers/laptops
+https://webscraper.io/test-sites/e-commerce/static/computers/tablets
