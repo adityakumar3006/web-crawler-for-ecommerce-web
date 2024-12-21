@@ -1,9 +1,8 @@
 const fs = require('fs');
-const axios = require('axios');
+const { chromium } = require('playwright'); // Playwright for browser automation
 const cheerio = require('cheerio');
 const { URL } = require('url');
 
-// Function to extract product links
 function extractProductLinks(htmlContent, baseUrl) {
     const $ = cheerio.load(htmlContent);
     const productLinks = new Set();
@@ -23,7 +22,6 @@ function extractProductLinks(htmlContent, baseUrl) {
     return productLinks;
 }
 
-// Function to extract category links
 function extractCategoryLinks(htmlContent, baseUrl, originalDomain) {
     const $ = cheerio.load(htmlContent);
     const categoryLinks = new Set();
@@ -34,8 +32,6 @@ function extractCategoryLinks(htmlContent, baseUrl, originalDomain) {
         const href = $(element).attr('href');
         if (href) {
             const fullUrl = new URL(href, baseUrl).href;
-
-            // Only include links within the original domain and exclude irrelevant paths
             if (
                 fullUrl.startsWith(originalDomain) &&
                 !exclusionPatterns.some(pattern => pattern.test(fullUrl))
@@ -48,59 +44,64 @@ function extractCategoryLinks(htmlContent, baseUrl, originalDomain) {
     return categoryLinks;
 }
 
-// Function to crawl a domain with enhanced filtering
-async function crawlDomain(domain, maxDepth = 2, concurrency = 5) {
+async function loadPageContent(url, browser) {
+    const page = await browser.newPage();
+    try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        const content = await page.content();
+        return content;
+    } catch (error) {
+        console.error(`Error loading page ${url}: ${error.message}`);
+        return null;
+    } finally {
+        await page.close();
+    }
+}
+
+
+async function crawlDomain(domain, maxDepth = 2, maxConcurrency = 10) {
     console.log(`Starting crawl for domain: ${domain}`);
     const visited = new Set();
     const productUrls = new Set();
     let toVisit = [domain];
 
+    const browser = await chromium.launch({ headless: true });
+
     for (let depth = 0; depth < maxDepth; depth++) {
-        const nextToVisit = [];
-        const promises = [];
+        const nextToVisit = new Set();
 
-        for (const url of toVisit) {
-            if (visited.has(url)) continue;
-            visited.add(url);
+        await Promise.all(
+            toVisit.slice(0, maxConcurrency).map(async (url) => {
+                if (visited.has(url)) return;
+                visited.add(url);
 
-            promises.push(
-                axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(response => {
-                    if (response.status === 200) {
-                        const htmlContent = response.data;
+                const htmlContent = await loadPageContent(url, browser);
+                if (!htmlContent) return;
 
-                        // Extract product links
-                        const productLinks = extractProductLinks(htmlContent, url);
-                        productLinks.forEach(link => productUrls.add(link));
+                const productLinks = extractProductLinks(htmlContent, url);
+                productLinks.forEach(link => productUrls.add(link));
 
-                        // Extract category links for further crawling
-                        if (depth < maxDepth - 1) {
-                            const categoryLinks = extractCategoryLinks(htmlContent, url, domain);
-                            nextToVisit.push(...categoryLinks);
-                        }
-                    }
-                }).catch(error => {
-                    console.error(`Error fetching ${url}: ${error.message}`);
-                })
-            );
+                if (depth < maxDepth - 1) {
+                    const categoryLinks = extractCategoryLinks(htmlContent, url, domain);
+                    categoryLinks.forEach(link => nextToVisit.add(link));
+                }
+            })
+        );
 
-            // Limit concurrency
-            if (promises.length >= concurrency) {
-                await Promise.all(promises);
-                promises.length = 0;
-            }
-        }
-
-        // Wait for remaining promises to resolve
-        await Promise.all(promises);
-        toVisit = [...new Set(nextToVisit)];
+        toVisit = Array.from(nextToVisit);
     }
 
+    await browser.close();
     return Array.from(productUrls);
 }
 
-// Main function
+
 async function main() {
-    const domains = fs.readFileSync('domains.txt', 'utf-8').split('\n').map(domain => domain.trim());
+    const domains = fs.readFileSync('domains.txt', 'utf-8')
+        .split('\n')
+        .map(domain => domain.trim())
+        .filter(Boolean);
+
     const results = {};
 
     for (const domain of domains) {
@@ -117,6 +118,4 @@ async function main() {
     console.log('Crawl complete. Results saved to output.json.');
 }
 
-main();
-
-
+main().catch(error => console.error(`Fatal error: ${error.message}`));
